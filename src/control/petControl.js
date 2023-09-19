@@ -1,82 +1,150 @@
 const AWS = require("aws-sdk");
+require("dotenv");
+require("aws-sdk/lib/maintenance_mode_message").suppress = true;
+
+AWS.config.update({
+	region: process.env.AWS_DEFAULT_REGION,
+	accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+	secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+});
+
+const dynamoClient = new AWS.DynamoDB.DocumentClient();
+const USER_TABLE = process.env.USER_TABLE;
+const PET_TABLE = process.env.PET_TABLE;
 
 const Pet = require("../models/Pet_Collection");
 const User = require("../models/User_Collection");
 
 exports.AddPet = async (req, res) => {
-	const userPet = new Pet(req.body);
-
 	try {
-		await userPet.save();
-		res.status(201).send(userPet);
-	} catch (error) {
-		res.status(400).send(error);
+		const params = {
+			TableName: PET_TABLE,
+		};
+
+		// scan ข้อมูลของ pet ออกมาเก็บ
+		const allPet = await dynamoClient.scan(params).promise();
+
+		let noIDpet = 201;
+		if (allPet.Items.length > 0) {
+			// map id แต่ละตัวออกมาเก็บใน idPet รูปแบบ Array
+			const idPet = allPet.Items.map((item) => parseInt(item.id, 10));
+
+			noIDpet = Math.max(...idPet) + 1; // นำข้อมูลใน Array มาหาค่ามากที่สุดและ +1
+		}
+
+		const tempData = {
+			// สร้างเพื่อเก็บข้อมูลรวมไว้ก่อน ก่อนที่จะนำเข้า Query
+			id: noIDpet.toString(),
+			petName: req.body.petName,
+			petType: req.body.petType,
+		};
+
+		const query = {
+			// ใน query มีชื่อ table , ข้อมูลรวมไว้ก่อนหน้า
+			TableName: PET_TABLE,
+			Item: tempData,
+		};
+
+		await dynamoClient.put(query).promise();
+
+		res.status(200).json({ query });
+	} catch (err) {
+		res.status(400).send(err);
 	}
 };
 
 exports.DeletePet = async (req, res) => {
 	try {
-		const _userPetName = await Pet.findOneAndDelete({
-			petName: req.params.userPet,
-		});
+		const { id } = req.params;
 
-		if (_userPetName == null) {
-			return res.status(404).send("Not Found pet user.!");
+		const params = {
+			// params คือการ scan ว่ามีข้อมูลเป็นหรือไม่
+			TableName: PET_TABLE,
+			FilterExpression: "id = :idValue",
+			ExpressionAttributeValues: {
+				":idValue": req.params.id,
+			},
+		};
+
+		const allPet = await dynamoClient.scan(params).promise();
+
+		if (allPet.Items.length > 0) {
+			// ถ้ามีจะทำการลบ
+			const tempDel = {
+				TableName: PET_TABLE,
+				Key: { id },
+			};
+
+			await dynamoClient.delete(tempDel).promise();
+			console.log(tempDel);
+
+			res.status(200).send("Delet pet successfully.");
+		} else {
+			// ถ้าไม่มีจะแจ้งเตือน
+			res.status(404).send("Not Found pet.!");
 		}
-
-		res.send(_userPetName);
-	} catch (error) {}
+	} catch (error) {
+		res.status(400).send(error);
+	}
 };
 
 exports.FindPet = async (req, res) => {
 	try {
-		const _findUserPet = await Pet.find(
-			{
-				petName: req.params.userPet,
+		const params = {
+			// params คือการ scan ว่ามีข้อมูลเป็นหรือไม่
+			TableName: PET_TABLE,
+			FilterExpression: "id = :idValue",
+			ExpressionAttributeValues: {
+				":idValue": req.params.id,
 			},
-			{
-				_id: 0,
-				petName: 1,
-				petType: 1,
-			}
-		);
+		};
 
-		if (_findUserPet.length <= 0) {
-			res.status(404).send("Not Found pet user.!");
+		const allPet = await dynamoClient.scan(params).promise();
+
+		if (allPet.Items.length > 0) {
+			res.status(200).send(allPet.Items);
+		} else {
+			res.status(404).send("Not Found pet.!");
 		}
-		res.send(_findUserPet);
 	} catch (error) {
 		res.status(500).send();
 	}
 };
 
 exports.UpdatePet = async (req, res) => {
-	const updates = Object.keys(req.body);
-
-	const allowUpdate = ["petName", "petType"];
-
-	const isvalidaOperation = updates.every((update) => {
-		return allowUpdate.includes(update);
-	});
-
-	if (!isvalidaOperation) {
-		return res.status(400).send({ error: "Invalid operation" });
-	}
-
 	try {
-		const userPet = await Pet.findOneAndUpdate(
-			{ petName: req.params.userPet },
-			req.body,
-			{
-				new: true,
-				runValidators: true,
-			}
-		);
-		if (userPet == null) {
-			return res.status(404).send("Not Found pet user.!");
-		}
+		const { id } = req.params;
 
-		return res.status(200).send(userPet);
+		const params = {
+			// params คือการ scan ว่ามีข้อมูลเป็นหรือไม่
+			TableName: PET_TABLE,
+			FilterExpression: "id = :idValue",
+			ExpressionAttributeValues: {
+				":idValue": req.params.id,
+			},
+		};
+
+		const allPet = await dynamoClient.scan(params).promise();
+
+		if (allPet.Items.length > 0) {
+			const tempUpdate = {
+				id: id,
+				petName: req.body.petName,
+				petType: req.body.petType,
+			};
+
+			const queryUpdate = {
+				TableName: PET_TABLE,
+				Item: tempUpdate,
+			};
+
+			await dynamoClient.put(queryUpdate).promise();
+
+			res.status(200).json({ queryUpdate });
+		} else {
+			res.status(404).send("Not Found pet.!");
+		}
+		return res.status(200).send();
 	} catch (e) {
 		res.status(400).send(e);
 	}

@@ -1,8 +1,6 @@
 const AWS = require("aws-sdk");
 require("dotenv").config();
 require("aws-sdk/lib/maintenance_mode_message").suppress = true;
-const User = require("../models/User_Collection");
-const Pet = require("../models/Pet_Collection");
 
 AWS.config.update({
 	region: process.env.AWS_DEFAULT_REGION,
@@ -146,8 +144,8 @@ exports.UpdateUser = async (req, res) => {
 		// 1. ค้นหาผู้ใช้ด้วย id
 		const findUser = await dynamoClient.get(params).promise();
 
+		// ถ้าไม่พบผู้ใช้หรือ object ว่าง
 		if (!findUser.Item) {
-			// ถ้าไม่พบผู้ใช้หรือ object ว่าง
 			return res
 				.status(400)
 				.json({ message: "Undefined id or username." });

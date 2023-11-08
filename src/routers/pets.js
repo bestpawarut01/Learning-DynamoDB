@@ -5,11 +5,13 @@ const {
 	DeletePet,
 	FindPet,
 	UpdatePet,
+	FindAllPet,
 } = require("../control/petControl");
 
 const router = express.Router();
 
 router.post("/pet/", AddPet);
+router.get("/pet/FindAll/", FindAllPet);
 router.delete("/pet/:id", DeletePet);
 router.get("/pet/:id", FindPet);
 router.patch("/pet/:id", UpdatePet);
